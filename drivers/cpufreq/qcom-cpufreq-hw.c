@@ -58,6 +58,9 @@ static unsigned int lut_max_entries = LUT_MAX_ENTRIES;
 static bool accumulative_counter;
 static bool perf_lock_support;
 
+#define GOLD_CLUSTER_MAX_FREQ  2600000  /* 2.6GHz hard limit for Gold cluster */
+static bool gold_freq_limited;
+
 struct cpufreq_qcom {
 	struct cpufreq_frequency_table *table;
 	void __iomem *base;
@@ -246,6 +249,17 @@ qcom_cpufreq_hw_target_index(struct cpufreq_policy *policy,
 	unsigned long freq = policy->freq_table[index].frequency;
 	int i;
 
+	if (cpumask_first(policy->related_cpus) == 4 &&
+	    freq > GOLD_CLUSTER_MAX_FREQ) {
+		for (i = index - 1; i >= 0; i--) {
+			if (policy->freq_table[i].frequency <= GOLD_CLUSTER_MAX_FREQ) {
+				index = i;
+				freq = policy->freq_table[i].frequency;
+				break;
+			}
+		}
+	}
+
 	if (perf_lock_support) {
 		if (c->pdmem_base)
 			writel_relaxed(index, c->pdmem_base);
@@ -284,10 +298,22 @@ qcom_cpufreq_hw_fast_switch(struct cpufreq_policy *policy,
 			    unsigned int target_freq)
 {
 	int index;
+	unsigned long freq;
 
 	index = policy->cached_resolved_idx;
 	if (index < 0)
 		return 0;
+
+	freq = policy->freq_table[index].frequency;
+	if (cpumask_first(policy->related_cpus) == 4 &&
+	    freq > GOLD_CLUSTER_MAX_FREQ) {
+		for (index = index - 1; index >= 0; index--) {
+			if (policy->freq_table[index].frequency <= GOLD_CLUSTER_MAX_FREQ)
+				break;
+		}
+		if (index < 0)
+			index = 0;
+	}
 
 	if (qcom_cpufreq_hw_target_index(policy, index))
 		return 0;
@@ -367,6 +393,7 @@ static struct freq_attr *qcom_cpufreq_hw_attr[] = {
 static void qcom_cpufreq_ready(struct cpufreq_policy *policy)
 {
 	static struct thermal_cooling_device *cdev[NR_CPUS];
+	static struct freq_qos_request gold_max_qos;
 	struct device_node *np;
 	unsigned int cpu = policy->cpu;
 
@@ -391,6 +418,16 @@ static void qcom_cpufreq_ready(struct cpufreq_policy *policy)
 	}
 
 	of_node_put(np);
+
+	if (!gold_freq_limited && cpumask_first(policy->related_cpus) == 4) {
+		if (freq_qos_add_request(&policy->constraints,
+					 &gold_max_qos, FREQ_QOS_MAX,
+					 GOLD_CLUSTER_MAX_FREQ) == 0) {
+			gold_freq_limited = true;
+			pr_info("Gold cluster (CPU4-6) max freq limited to %u kHz\n",
+				GOLD_CLUSTER_MAX_FREQ);
+		}
+	}
 }
 
 static int qcom_cpufreq_hw_suspend(struct cpufreq_policy *policy)
