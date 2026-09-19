@@ -28,7 +28,7 @@ jobs:
           repository: miaizhe/android_kernel_oneplus_sm8350_9rt_295
           path: kernel/msm-5.4
           fetch-depth: 1
-          ref: test/bpf-eevdf-backport
+          ref: 20260917-R10
 
       - name: Checkout Modules Source
         uses: actions/checkout@v6
