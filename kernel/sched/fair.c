@@ -534,16 +534,8 @@ static unsigned int sched_latency_nice_to_slice(int latency_nice)
 {
 	latency_nice = clamp(latency_nice, -20, 19);
 
-	/*
-	 * Linear interpolation from mainline 7.2:
-	 * - latency_nice -20 → 100000 ns (0.1ms, minimum latency)
-	 * - latency_nice  19 → 4000000 ns (4ms, maximum latency)
-	 *
-	 * This gives latency-sensitive tasks (negative latency_nice)
-	 * shorter slices for faster preemption, while batch tasks
-	 * (positive latency_nice) get longer slices for throughput.
-	 */
-	return 100000 + (latency_nice + 20) * 97436;
+	/* Linear interpolation: slice = 125000 + (latency_nice + 20) * 73076 */
+	return 125000 + (latency_nice + 20) * 73076;
 }
 
 static unsigned int entity_slice(struct sched_entity *se)
@@ -714,11 +706,11 @@ int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (curr && curr->on_rq) {
 		unsigned long weight = scale_load_down(curr->load.weight);
 
-		avg += entity_key(cfs_rq, curr) * (s64)weight;
+		avg += entity_key(cfs_rq, curr) * weight;
 		load += weight;
 	}
 
-	return avg >= entity_key(cfs_rq, se) * (s64)load;
+	return avg >= entity_key(cfs_rq, se) * load;
 }
 
 static u64 __update_min_vruntime(struct cfs_rq *cfs_rq, u64 vruntime)
@@ -4533,20 +4525,19 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	vslice = calc_delta_fair(se->slice, se);
 
 	if (sched_feat(PLACE_LAG) && cfs_rq->nr_running) {
-		unsigned long weight = scale_load_down(se->load.weight);
+		struct sched_entity *curr = cfs_rq->curr;
+		unsigned long load;
 
 		lag = se->vlag;
 
-		/*
-		 * Scale lag with the load delta: when re-enqueuing on a
-		 * different weighted runqueue, adjust lag proportionally.
-		 * Use a minimum load of 1 to avoid division by zero.
-		 */
-		if (lag && cfs_rq->avg_load) {
-			s64 scaled_lag = div_s64(lag * weight, cfs_rq->avg_load);
+		load = cfs_rq->avg_load;
+		if (curr && curr->on_rq)
+			load += scale_load_down(curr->load.weight);
 
-			lag = clamp(scaled_lag, -vslice, vslice);
-		}
+		lag *= load + scale_load_down(se->load.weight);
+		if (WARN_ON_ONCE(!load))
+			load = 1;
+		lag = div_s64(lag, load);
 	}
 
 	se->vruntime = vruntime - lag;
