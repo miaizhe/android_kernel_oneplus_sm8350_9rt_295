@@ -5931,6 +5931,11 @@ long si_mem_available(void)
 	chp_pool_pages -= min(chp_pool_pages / 2, cont_pte_pool_high());
 	available += chp_pool_pages;
 #endif
+#if defined(CONFIG_OPLUS_UXMEM_OPT) && defined(OPLUS_FEATURE_SCHED_ASSIST) \
+		&& defined(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	/* ux page pool pages are instantly reclaimable by ux tasks */
+	available += ux_page_pool_total_pages();
+#endif /* OPLUS_UXMEM_OPT */
 
 	if (available < 0)
 		available = 0;
@@ -5948,6 +5953,10 @@ void si_meminfo(struct sysinfo *val)
 	val->totalram = totalram_pages();
 	val->sharedram = global_node_page_state(NR_SHMEM);
 	val->freeram = global_zone_page_state(NR_FREE_PAGES);
+#if defined(CONFIG_OPLUS_UXMEM_OPT) && defined(OPLUS_FEATURE_SCHED_ASSIST) \
+		&& defined(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	val->freeram += ux_page_pool_total_pages();
+#endif /* OPLUS_UXMEM_OPT */
 	val->bufferram = nr_blockdev_pages();
 	val->totalhigh = totalhigh_pages();
 	val->freehigh = nr_free_highpages();

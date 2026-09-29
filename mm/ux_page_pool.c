@@ -37,8 +37,8 @@
 #define K(x) ((x) << (PAGE_SHIFT - 10))
 //static const unsigned int orders[] = {0, 4, 8};
 static const unsigned int orders[] = {0, 1};
-//32M for order 0, 8M  for order1 default
-static const unsigned int page_pool_nr_pages[] = {(SZ_32M >> PAGE_SHIFT), (SZ_8M >> PAGE_SHIFT)};
+//96M for order 0, 8M  for order1 default (ColorOS 17 uxmem_opt parity)
+static const unsigned int page_pool_nr_pages[] = {((SZ_64M + SZ_32M) >> PAGE_SHIFT), (SZ_8M >> PAGE_SHIFT)};
 #define NUM_ORDERS ARRAY_SIZE(orders)
 static struct ux_page_pool *pools[NUM_ORDERS];
 static struct task_struct *ux_page_pool_tsk = NULL;
@@ -272,6 +272,32 @@ static int page_pool_fill(struct ux_page_pool *pool, int migratetype)
 	return true;
 }
 
+/*
+ * Pages cached in the ux page pool are accounted as used by the buddy
+ * allocator, so both MemFree and MemAvailable under-report the memory
+ * that is actually available to ux tasks. Expose the pool size so the
+ * meminfo paths can add it back (ColorOS 17 uxmem_opt behaviour).
+ */
+unsigned long ux_page_pool_total_pages(void)
+{
+	unsigned long total = 0;
+	int i, j;
+
+	if (unlikely(!ux_page_pool_enabled))
+		return 0;
+
+	for (i = 0; i < NUM_ORDERS; i++) {
+		struct ux_page_pool *pool = pools[i];
+
+		if (pool == NULL)
+			continue;
+		for (j = 0; j < UX_POOL_MIGRATETYPE_TYPES_SIZE; j++)
+			total += (unsigned long)pool->count[j] << orders[i];
+	}
+
+	return total;
+}
+
 /* fast path */
 struct page *ux_page_pool_alloc_pages(unsigned int order, int migratetype, bool may_retry)
 {
@@ -337,6 +363,32 @@ int ux_page_pool_refill(struct page *page, unsigned int order, int migratetype)
 
 	page_pool_add(pool, page, migratetype);
 	return true;
+}
+
+/*
+ * Pages cached in the ux page pool are accounted as used by the buddy
+ * allocator, so both MemFree and MemAvailable under-report the memory
+ * that is actually available to ux tasks. Expose the pool size so the
+ * meminfo paths can add it back (ColorOS 17 uxmem_opt behaviour).
+ */
+unsigned long ux_page_pool_total_pages(void)
+{
+	unsigned long total = 0;
+	int i, j;
+
+	if (unlikely(!ux_page_pool_enabled))
+		return 0;
+
+	for (i = 0; i < NUM_ORDERS; i++) {
+		struct ux_page_pool *pool = pools[i];
+
+		if (pool == NULL)
+			continue;
+		for (j = 0; j < UX_POOL_MIGRATETYPE_TYPES_SIZE; j++)
+			total += (unsigned long)pool->count[j] << orders[i];
+	}
+
+	return total;
 }
 
 static ssize_t ux_page_pool_write(struct file *file,

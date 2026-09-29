@@ -29,4 +29,5 @@ struct ux_page_pool {
 
 struct page *ux_page_pool_alloc_pages(unsigned int order, int migratetype, bool may_retry);
 int ux_page_pool_refill(struct page *page, unsigned int order, int migratetype);
+unsigned long ux_page_pool_total_pages(void);
 #endif /* _UX_PAGE_POOL_H */
