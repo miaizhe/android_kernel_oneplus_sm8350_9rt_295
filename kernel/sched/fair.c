@@ -105,6 +105,13 @@ static inline bool task_fits_max(struct task_struct *p, int cpu);
 unsigned int sysctl_sched_latency			= 6000000ULL;
 static unsigned int normalized_sysctl_sched_latency	= 6000000ULL;
 
+/*
+ * ColorOS/OPLUS UX (foreground) tasks get their EEVDF slice divided by this
+ * factor. A shorter slice pulls the virtual deadline in, so pick_eevdf()
+ * prefers them over background work on wakeup. 1 disables the behaviour.
+ */
+unsigned int sysctl_sched_ux_slice_divisor		= 2;
+
 unsigned int sysctl_sched_base_slice			= 750000ULL;
 
 /*
@@ -526,16 +533,24 @@ static inline struct task_struct *task_of(struct sched_entity *se)
 /*
  * Map latency_nice (-20..19) to a slice value.
  * Lower latency_nice = shorter slice = earlier virtual deadline = lower latency.
- * -20 (lowest latency) -> 125000ns (0.125ms)
- *   0 (default)        -> 750000ns (0.75ms)
- *  19 (highest latency) -> 3000000ns (3ms)
+ * The scale is anchored on sysctl_sched_base_slice so that latency_nice == 0
+ * yields exactly the default slice and the mapping stays monotonic across 0
+ * (the previous fixed-scale version returned ~1.5ms for both -1 and 0, which
+ * made -1 *less* urgent than the default).
+ * -20 (lowest latency) -> base / 8
+ *   0 (default)        -> base
+ *  19 (highest latency) -> base * 4
  */
 static unsigned int sched_latency_nice_to_slice(int latency_nice)
 {
+	u64 base = sysctl_sched_base_slice;
+
 	latency_nice = clamp(latency_nice, -20, 19);
 
-	/* Linear interpolation: slice = 125000 + (latency_nice + 20) * 73076 */
-	return 125000 + (latency_nice + 20) * 73076;
+	if (latency_nice < 0)
+		return (unsigned int)div_u64(base * (u64)(160 + latency_nice * 7), 160);
+
+	return (unsigned int)div_u64(base * (u64)(20 + latency_nice * 60 / 19), 20);
 }
 
 static unsigned int entity_slice(struct sched_entity *se)
@@ -546,10 +561,26 @@ static unsigned int entity_slice(struct sched_entity *se)
 		return sysctl_sched_base_slice;
 
 	p = task_of(se);
-	if (p->latency_nice == 0)
-		return sysctl_sched_base_slice;
+	if (p->latency_nice)
+		return sched_latency_nice_to_slice(p->latency_nice);
 
-	return sched_latency_nice_to_slice(p->latency_nice);
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	/*
+	 * ColorOS marks its foreground/UX threads (LIGHT/HEAVY/ANIMATOR/LISTPICK)
+	 * in p->ux_state. Give them a shorter slice so their virtual deadline
+	 * lands earlier and pick_eevdf() wakes them ahead of background work --
+	 * the EEVDF-native form of the vendor "unfair scheduling" behaviour.
+	 * test_task_ux() drops the flag once a task exceeds ux_task_exec_limit(),
+	 * so this cannot starve anything.
+	 */
+	if (sysctl_sched_ux_slice_divisor > 1 && test_task_ux(p)) {
+		unsigned int slice = sysctl_sched_base_slice /
+				     sysctl_sched_ux_slice_divisor;
+
+		return max(slice, 100000U);
+	}
+#endif
+	return sysctl_sched_base_slice;
 }
 
 #define for_each_sched_entity(se) \
