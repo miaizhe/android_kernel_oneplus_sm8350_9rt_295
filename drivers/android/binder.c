@@ -293,7 +293,7 @@ static void oplus_parse_service_name(struct binder_transaction_data *tr,
 				get_user(c, tmp);
 				if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || '.' == c) {
 					if (len < OPLUS_MAX_SERVICE_NAME_LEN - 1)
-						len += sprintf(sname + len, "%c", c);
+						sname[len++] = c;
 					else
 						break;
 				}
@@ -303,8 +303,9 @@ static void oplus_parse_service_name(struct binder_transaction_data *tr,
 			}
 			sname[len] = '\0';
 		}
-		pr_info("context.name[%s] tr.size:%lu service:%s\n",
-			proc->context->name, (unsigned long)tr->data_size, sname);
+		if (binder_debug_mask & BINDER_DEBUG_TRANSACTION)
+			pr_info("context.name[%s] tr.size:%lu service:%s\n",
+				proc->context->name, (unsigned long)tr->data_size, sname);
 	} else {
 		if (NULL != tr && 0 != tr->target.handle) {
 			sprintf(sname, "AnonymousCallback");
