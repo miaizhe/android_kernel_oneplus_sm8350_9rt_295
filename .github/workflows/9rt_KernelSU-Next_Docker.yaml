@@ -63,10 +63,31 @@ jobs:
           curl https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/Rekernel/rekernel_extra.patch -o rekernel_extra.patch
           patch -p1 < rekernel_extra.patch || true
           
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+            ccache-
+
+      - name: Configure ccache
+        run: |
+          ccache --max-size=3G
+          ccache --set-config=compression=true
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=time_macros,include_file_mtime,include_file_ctime,file_stat_matches
+          ccache --zero-stats || true
+          ccache --show-config | head -25
+
       - name: Compile Kernel
         run: |
           export PATH="$(pwd)/compiler/clang-bin/bin:$PATH"
           export CROSS_COMPILE="aarch64-linux-gnu-"
+          export CCACHE_DIR="$HOME/.ccache"
+          export CCACHE_BASEDIR="$GITHUB_WORKSPACE"
+          export CCACHE_COMPILERCHECK=content
           export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
           export CLANG_TRIPLE="aarch64-linux-gnu-"
           export CLANG_PATH="$(pwd)/compiler/clang-bin/bin"
@@ -106,7 +127,7 @@ jobs:
           void ksu_selinux_hide_handle_second_stage(void) { }
           void ksu_selinux_hide_handle_post_fs_data(void) { }
           EOF
-          make O=out CC="clang" LLVM=1 9rt_defconfig  
+          make O=out CC="ccache clang" LLVM=1 9rt_defconfig  
           ./scripts/config --file out/.config \
             -d CONFIG_KSU_TRACEPOINT_HOOK \
             -e CONFIG_KSU_MANUAL_HOOK
@@ -128,7 +149,7 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS
           ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS_MOUNT
           ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
-          make O=out CC="clang" LLVM=1 -j$(nproc)
+          make O=out CC="ccache clang" LLVM=1 -j$(nproc)
       - name: Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
