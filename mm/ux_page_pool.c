@@ -272,32 +272,6 @@ static int page_pool_fill(struct ux_page_pool *pool, int migratetype)
 	return true;
 }
 
-/*
- * Pages cached in the ux page pool are accounted as used by the buddy
- * allocator, so both MemFree and MemAvailable under-report the memory
- * that is actually available to ux tasks. Expose the pool size so the
- * meminfo paths can add it back (ColorOS 17 uxmem_opt behaviour).
- */
-unsigned long ux_page_pool_total_pages(void)
-{
-	unsigned long total = 0;
-	int i, j;
-
-	if (unlikely(!ux_page_pool_enabled))
-		return 0;
-
-	for (i = 0; i < NUM_ORDERS; i++) {
-		struct ux_page_pool *pool = pools[i];
-
-		if (pool == NULL)
-			continue;
-		for (j = 0; j < UX_POOL_MIGRATETYPE_TYPES_SIZE; j++)
-			total += (unsigned long)pool->count[j] << orders[i];
-	}
-
-	return total;
-}
-
 /* fast path */
 struct page *ux_page_pool_alloc_pages(unsigned int order, int migratetype, bool may_retry)
 {
