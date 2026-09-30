@@ -105,6 +105,9 @@ jobs:
           int ksu_selinux_hide_init(void) { return 0; }
           void ksu_selinux_hide_exit(void) { }
           bool ksu_selinux_hide_enable(void) { return true; }
+          void ksu_selinux_hide_drop_backup_if_unused(void) { }
+          void ksu_selinux_hide_handle_second_stage(void) { }
+          void ksu_selinux_hide_handle_post_fs_data(void) { }
           EOF
           make O=out CC="clang" LLVM=1 9rt_defconfig  
           ./scripts/config --file out/.config \
