@@ -1,4 +1,4 @@
-name: P0 - 9RT KernelSU LKM test
+name: 9RT KernelSU LKM test
 
 on:
   workflow_dispatch:
@@ -22,6 +22,7 @@ jobs:
         with:
           path: kernel/msm-5.4
           fetch-depth: 1
+          ref: LKM
 
       - name: Checkout Modules Source
         uses: actions/checkout@v6
