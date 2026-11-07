@@ -206,7 +206,10 @@ jobs:
             -e CONFIG_KPROBES \
             -e CONFIG_FTRACE_SYSCALLS \
             -e CONFIG_TMPFS_POSIX_ACL \
-            -e CONFIG_TMPFS_XATTR
+            -e CONFIG_TMPFS_XATTR \
+            -e CONFIG_IP6_NF_NAT \
+            -e CONFIG_IP6_NF_TARGET_MASQUERADE \
+            -e CONFIG_MACVLAN
           # ==========================================
           ./scripts/config --file out/.config --enable CONFIG_CGROUP_PIDS
           ./scripts/config --file out/.config --enable CONFIG_CGROUP_IO
